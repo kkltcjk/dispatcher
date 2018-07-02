@@ -1,6 +1,5 @@
 import json
 import os
-import time
 
 import requests
 from django.http import HttpResponse
@@ -26,12 +25,9 @@ def start(request):
 
     conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
 
-    _init_task(paths)
     _prepare(conf, paths)
+    _cut(conf, paths)
 
-    # import pdb;pdb.set_trace()
-    _init_details(paths)
-    _dispatch(conf, paths)
         
     resp = {'code': 0, 'msg': 'SUCCESS'}
     return HttpResponse(json.dumps(resp))
@@ -49,14 +45,11 @@ def update(request):
     name = os.path.dirname(path)
     ipc = os.path.basename(path)
 
-    task = Task.objects.filter(name=name)[0]
-    detail = json.loads(task.detail)
-    detail[ipc] = 1
-    task.detail = json.dumps(detail)
-    task.save()
+    _update_detail(name, ipc, 'status', 'finished')
 
     if all(detail.values()):
-        _cluster(path)
+        _update_attr(name, 'procedure', 'cutted')
+        _cluster(name)
         
     resp = {'code': 0, 'msg': 'SUCCESS'}
     return HttpResponse(json.dumps(resp))
@@ -71,82 +64,74 @@ def tasks(request):
 def _cluster(path):
     conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
 
-    headers = {'Content-Type': 'application/json'}
     url = 'http://{}/cluster/start'.format(conf['server']['cluster'])
     data = {'path': path}
+    _send_request(url, data)
+
+
+def _update_attr(name, key, value):
     try:
-        resp = requests.post(url, data=json.dumps(data), headers=headers)
-    except Exception as e:
-        print(e)
-    else:
-        pass
+        task = Task.objects.get(name=name)
+    except Exception:
+        task = Task.objects.create(name=name, procedure='preparing')
 
-
-def _init_task(paths):
-    for path in paths:
-        task = Task.objects.create(name=path, procedure=0)
-
-
-def _update_procedure(name, value):
-    task = Task.objects.filter(name=name)[0]
-    task.procedure = value
-    task.save()
-
-
-def _update_detail(name, value):
-    task = Task.objects.filter(name=name)[0]
-    task.detail = value
+    setattr(task, key, value)
     task.save()
 
 
 def _prepare(conf, paths):
-    obj = TrainPrepareV1(conf, paths)
-    obj.run()
-
     for path in paths:
-        _update_procedure(path, 1)
+        try:
+            obj = TrainPrepareV1(conf, [path])
+            obj.run()
+        except Exception as e:
+            print(e)
+        else:
+            _update_attr(path, 'procedure', 'prepared')
 
 
-def _dispatch(conf, paths):
+def _cut(conf, paths):
 
     workers = conf['server']['worker']
 
     index = 0
     for path in paths:
-        _update_procedure(path, 2)
+        _update_attr(path, 'procedure', 'cutting')
+
         for ddir in os.listdir(path):
             abs_ddir = os.path.join(path, ddir)
             if not os.path.isdir(abs_ddir):
                 continue
 
             idx = index % len(workers)
-            _do_dispatch(workers[idx], abs_ddir)
+            _dispatch(workers[idx], abs_ddir)
+
+            _update_detail(path, ddir, 'location', workers[idx])
+            _update_detail(path, ddir, 'status', 'cutting')
 
             index += 1
 
 
-def _do_dispatch(service, ddir):
-    time.sleep(1)
-    headers = {'Content-Type': 'application/json'}
+def _update_detail(path, ipc, key, value):
+    task = Task.objects.get(name=path)
+
+    detail = json.loads(task.detail) if task.detail else {}
+    detail.setdefault(ipc, {})
+    detail[ipc][key] = value
+
+    task.detail = json.dumps(detail)
+    task.save()
+
+
+def _dispatch(service, ddir):
     url = 'http://{}/cut/start'.format(service)
     data = {'path': ddir}
+    _send_request(url, data)
+
+
+def _send_request(url, data):
+    headers = {'Content-Type': 'application/json'}
     try:
         resp = requests.post(url, data=json.dumps(data), headers=headers)
     except Exception as e:
         print(e)
-    else:
-        pass
-
-
-def _init_details(paths):
-    for path in paths:
-        _init_detail(path)
-
-
-def _init_detail(path):
-    detail = {}
-    for ddir in os.listdir(path):
-        abs_ddir = os.path.join(path, ddir)
-        if os.path.isdir(abs_ddir):
-            detail[ddir] = 0
-    _update_detail(path, json.dumps(detail))
