@@ -10,6 +10,8 @@ from face.cut.train import TrainIpcV1
 
 from utils.pools import gpupool
 
+index = 0
+
 
 # Create your views here.
 def start(request):
@@ -38,16 +40,21 @@ def wrapper_mock(obj, path):
 
 
 def async_cut(path):
+    global index
+
     conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
 
     for i in range(4):
-        obj = TrainIpcV1(configuration, '')
+        obj = TrainIpcV1(conf, '')
         gpupool.apply_async(wrapper_mock, (obj, ''), 0)
 
+    gpu_idx = index % conf['cut']['gpu']['total']
+    disk_idx = index % conf['cut']['disk']['total']
+
     obj = TrainIpcV1(conf, path)
-    obj.update_gpu(0)
-    obj.update_disk(0)
-    gpupool.apply_async(wrapper, (obj, path), 0)
+    obj.update_gpu(gpu_idx)
+    obj.update_disk(disk_idx)
+    gpupool.apply_async(wrapper, (obj, path), gpu_idx)
 
 
 def _report_status(path):
