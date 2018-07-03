@@ -2,9 +2,6 @@ import logging
 from multiprocessing import Pool
 from multiprocessing import Lock
 
-from face.common import utils
-from face.common import constants as consts
-
 LOG = logging.getLogger(__name__)
 
 
@@ -36,7 +33,3 @@ class GPUPool(object):
         except KeyboardInterrupt:
             [p.terminate() for p in self.pools.values()]
             [p.join() for p in self.pools.values()]
-
-
-conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
-gpupool = GPUPool(conf['cut']['gpu']['total'], conf['cut']['gpu']['process'])

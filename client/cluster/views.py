@@ -6,6 +6,10 @@ from face.common import utils
 from face.common import constants as consts
 from face.cluster.train import TrainClusterV1
 
+
+def _wrapper(obj):
+    obj.run()
+
 pool = Pool(2)
 
 # Create your views here.
@@ -25,7 +29,3 @@ def start(request):
 
     resp = {'code': 0, 'msg': 'success'}
     return HttpResponse(json.dumps(resp))
-
-
-def _wrapper(obj):
-    obj.run()
