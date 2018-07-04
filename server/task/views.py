@@ -47,7 +47,10 @@ def update(request):
 
     _update_detail(name, ipc, 'status', 'finished')
 
-    if all(detail.values()):
+    task = Task.objects.get(name=name)
+    detail = json.loads(task.detail) if task.detail else {}
+
+    if all([detail[k]['status'] == 'finished' for k in detail]):
         _update_attr(name, 'procedure', 'cutted')
         _cluster(name)
         
