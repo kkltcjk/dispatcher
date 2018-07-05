@@ -1,4 +1,4 @@
-apt-get install -y nginx uwsgi uwsgi-plugin-python
+apt-get install -y nginx uwsgi uwsgi-plugin-python --force-yes
 
 mkdir -p /var/log/face
 

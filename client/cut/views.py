@@ -10,13 +10,21 @@ from face.cut.train import TrainIpcV1
 from utils.pools import GPUPool
 
 index = 0
+conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
+
+
+def _report_status(path):
+    headers = {'Content-Type': 'application/json'}
+    url = 'http://{}/task/update'.format(conf['server']['controller'])
+    data = {'path': path}
+    resp = requests.post(url, data=json.dumps(data), headers=headers)
+
 
 def wrapper(obj, path):
     _wapper(obj)
     _report_status(path)
 
 
-conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
 gpupool = GPUPool(conf['cut']['gpu']['total'], conf['cut']['gpu']['process'])
 
 
@@ -48,9 +56,4 @@ def async_cut(path):
     obj.update_disk(disk_idx)
     gpupool.apply_async(wrapper, (obj, path), gpu_idx)
 
-
-def _report_status(path):
-    headers = {'Content-Type': 'application/json'}
-    url = 'http://{}/task/update'.format(conf['server']['controller'])
-    data = {'path': path}
-    resp = requests.post(url, data=json.dumps(data), headers=headers)
+    index += 1
