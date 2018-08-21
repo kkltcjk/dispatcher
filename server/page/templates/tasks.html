@@ -1,0 +1,76 @@
+<html>
+    <head>
+        <title>Tasks</title>
+        <meta charset="utf-8">
+        {% load staticfiles %}
+        <link href="{% static 'css/bootstrap.css' %}" rel="stylesheet">
+    </head>
+    <body>
+        <div class="container">
+            <h3 style="margin-top:30px;margin-bottom:10px">等待运行</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Video</th>
+                        <th>Ticket</th>
+                        <th>Identity</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in schedule %}
+                    <tr>
+                        <td>{{ task.video }}</td>
+                        <td>{{ task.ticket }}</td>
+                        <td>{{ task.identity }}</td>
+                        {% if task.ticket == "Ready" and task.identity == "Ready" %}
+                        <td><button class="btn btn-default" onclick='start("{{ task.video }}")'>Start</button></td>
+                        {% else %}
+                            <td><button class="btn btn-default">Wait</button></td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <hr>
+
+            <h3 style="margin-top:50px;margin-bottom:10px">运行中</h3>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Video</th>
+                        <th>Procedure</th>
+                        <th>Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in running %}
+                    <tr>
+                        <td>{{ task.name }}</td>
+                        <td>{{ task.procedure }}</td>
+                        <td><button class="btn btn-default"><a href="/page/detail?name={{task.name}}">Detail</a></button></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+        </div>
+        <script src="{% static 'js/jquery.js' %}"></script>
+        <script>
+            function start(name){
+                $.post('/task/start', JSON.stringify({"paths": [name]}), function(resp){
+                    result = JSON.parse(resp);
+
+                    console.log(result);
+
+                    if(result['code'] == 0){
+                        alert('成功');
+                    }else{
+                        alert('失败,' + result['msg']);
+                    }
+                });
+            }
+        </script>
+    </body>
+</html>

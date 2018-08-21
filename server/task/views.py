@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+import subprocess
 
 import requests
 from django.http import HttpResponse
@@ -8,6 +10,8 @@ from face.common import constants as consts
 from face.prepare.train import TrainPrepareV1
 
 from task.models import Task
+
+index = 0
 
 # Create your views here.
 def start(request):
@@ -26,6 +30,7 @@ def start(request):
     conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
 
     _prepare(conf, paths)
+    _remount(conf)
     _cut(conf, paths)
 
         
@@ -34,6 +39,7 @@ def start(request):
 
 
 def update(request):
+    # import pdb;pdb.set_trace()
     body = json.loads(request.body)
 
     try:
@@ -42,17 +48,25 @@ def update(request):
         resp = {'code': 1, 'msg': 'missing path args'}
         return HttpResponse(json.dumps(resp))
 
-    name = os.path.dirname(path)
-    ipc = os.path.basename(path)
+    ttype = body.get('type', 'cut')
 
-    _update_detail(name, ipc, 'status', 'finished')
+    if ttype == 'cut':
 
-    task = Task.objects.get(name=name)
-    detail = json.loads(task.detail) if task.detail else {}
+        name = os.path.dirname(path)
+        ipc = os.path.basename(path)
 
-    if all([detail[k]['status'] == 'finished' for k in detail]):
-        _update_attr(name, 'procedure', 'cutted')
-        _cluster(name)
+        _update_detail(name, ipc, 'status', 'finished')
+
+        task = Task.objects.get(name=name)
+        detail = json.loads(task.detail) if task.detail else {}
+
+        if all([detail[k]['status'] == 'finished' for k in detail]):
+            shutil.rmtree(name)
+            _update_attr(name, 'procedure', 'clusting')
+            _cluster(name)
+    else:
+        _update_attr(path, 'procedure', 'cleaning')
+        _clean(path)
         
     resp = {'code': 0, 'msg': 'SUCCESS'}
     return HttpResponse(json.dumps(resp))
@@ -62,6 +76,29 @@ def tasks(request):
     all_tasks = Task.objects.all()
     data = [{'name': t.name, 'detail': t.detail, 'procedure': t.procedure} for t in all_tasks]
     return HttpResponse(json.dumps(data))
+
+
+def _clean(path):
+    conf = utils.parse_ymal(consts.CONFIG_FILE)['train']
+
+    scenario = os.path.basename(path)
+
+    actual_count = len(os.listdir(os.path.join(conf['output']['path'][int(scenario) % conf['output']['total']], scenario, 'cluster/id_data_result')))
+    identity_path = os.path.join(conf['identity_dir'], scenario, 'id_data_cluster')
+    total_count = len(os.listdir(identity_path)) / 2
+
+    url = 'http://{}/task/start'.format(conf['server']['clean'])
+    data = {'path': path, 'date': '{}_{}_{}'.format(scenario, actual_count, total_count)}
+    _send_request(url, data)
+
+
+def _remount(conf):
+
+    cmd = 'umount {}'.format(conf['mount']['remote'])
+    subprocess.call(cmd, shell=True)
+
+    cmd = 'mount -t nfs {} {}'.format(conf['mount']['remote'], conf['mount']['point'])
+    subprocess.call(cmd, shell=True)
 
 
 def _cluster(path):
@@ -95,9 +132,12 @@ def _prepare(conf, paths):
 
 def _cut(conf, paths):
 
-    workers = conf['server']['worker']
+    global index
 
-    index = 0
+    workers = conf['server']['workers']
+    sub_workers = workers[index % len(workers)]['subs']
+
+    sub_index = 0
     for path in paths:
         _update_attr(path, 'procedure', 'cutting')
 
@@ -106,13 +146,15 @@ def _cut(conf, paths):
             if not os.path.isdir(abs_ddir):
                 continue
 
-            idx = index % len(workers)
-            _dispatch(workers[idx], abs_ddir)
+            sub_idx = sub_index % len(sub_workers)
+            _dispatch(sub_workers[sub_idx], abs_ddir)
 
-            _update_detail(path, ddir, 'location', workers[idx])
+            _update_detail(path, ddir, 'location', sub_workers[sub_idx])
             _update_detail(path, ddir, 'status', 'cutting')
 
-            index += 1
+            sub_index += 1
+
+    index += 1
 
 
 def _update_detail(path, ipc, key, value):
